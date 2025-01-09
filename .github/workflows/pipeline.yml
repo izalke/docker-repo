@@ -1,0 +1,41 @@
+name: Pipeline
+
+permissions:
+  packages: write
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: build
+        run: docker build -t flaskapp:latest .
+      - name: test
+        run: echo "Running tests..."
+      - name: authenticate with GHCR
+        run: |
+          docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+      - name: scan with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: "flaskapp:latest"
+          format: "json"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "MEDIUM"
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:latest
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
+        continue-on-error: true
+      - name: tag the image
+        run: |
+          docker tag flaskapp:latest ghcr.io/${{ github.repository }}:latest
+      - name: Push to registry
+        run: docker push ghcr.io/${{ github.repository }}:latest
